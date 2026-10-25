@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tonton Tech - Vendas Cloud</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#10b981',
+                        darkBg: '#0f172a',
+                        darkCard: '#1e293b',
+                        darkBorder: '#334155'
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Bibliotecas Externas -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            -webkit-tap-highlight-color: transparent;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        #reader video { object-fit: cover; border-radius: 0.75rem; width: 100% !important; }
+        .tab-content { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Loader Overlay */
+        #app-loader {
+            transition: opacity 0.3s ease;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 dark:bg-darkBg dark:text-gray-200 transition-colors duration-200 min-h-screen flex flex-col">
+
+    <!-- Loading Screen -->
+    <div id="app-loader" class="fixed inset-0 bg-white dark:bg-darkBg z-[100] flex flex-col items-center justify-center">
+        <i class="fas fa-circle-notch fa-spin text-4xl text-primary mb-4"></i>
+        <p class="font-medium text-gray-500">Conectando à nuvem...</p>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="fixed top-4 right-4 z-[70] flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Scanner Modal -->
+    <div id="scanner-modal" class="fixed inset-0 bg-black/80 z-[60] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white dark:bg-darkCard rounded-2xl shadow-2xl p-4 w-full max-w-md flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold">Escanear Código</h3>
+                <button onclick="window.stopScanner()" class="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <div id="reader" class="w-full bg-black rounded-xl overflow-hidden min-h-[250px] relative"></div>
+        </div>
+    </div>
+
+    <!-- Payment PIX Modal -->
+    <div id="pix-modal" class="fixed inset-0 bg-black/80 z-[60] hidden flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm">
+        <div class="bg-white dark:bg-darkCard rounded-t-2xl sm:rounded-2xl shadow-2xl p-6 w-full max-w-md flex flex-col items-center max-h-[90vh] overflow-y-auto">
+            <div class="w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full mb-4 sm:hidden"></div>
+            
+            <h3 class="text-xl font-bold mb-1">Pagamento PIX</h3>
+            <p class="text-gray-500 dark:text-gray-400 mb-4 text-center text-sm" id="pix-resumo-texto"></p>
+            
+            <div id="qrcode-container" class="bg-white p-4 rounded-xl shadow-inner border border-gray-200 mb-4"></div>
+            
+            <div class="w-full relative mb-6">
+                <label class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1 block">PIX Copia e Cola</label>
+                <div class="relative">
+                    <textarea id="pix-copia-cola" readonly class="w-full p-3 pr-12 text-xs border border-gray-300 dark:border-darkBorder rounded-xl bg-gray-50 dark:bg-gray-900 outline-none resize-none h-20 break-all"></textarea>
+                    <button onclick="window.copiarPix()" class="absolute right-2 top-2 bottom-2 bg-blue-50 dark:bg-gray-800 text-primary p-2 rounded-lg hover:bg-blue-100 transition flex items-center justify-center aspect-square">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="w-full flex flex-col gap-3">
+                <button onclick="window.enviarWhatsApp()" class="w-full bg-[#25D366] hover:bg-[#20bd5a] text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition active:scale-95 shadow-lg shadow-green-500/30">
+                    <i class="fab fa-whatsapp text-xl"></i> Enviar p/ WhatsApp
+                </button>
+                <button id="btn-finalizar-venda" onclick="window.confirmarVendaPix()" class="w-full bg-primary hover:bg-blue-600 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition active:scale-95 shadow-lg shadow-blue-500/30">
+                    <i class="fas fa-check-circle text-xl"></i> Finalizar Venda
+                </button>
+                <button onclick="window.fecharModalPix()" class="w-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 py-3 rounded-xl font-medium transition active:scale-95 mt-2">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-white dark:bg-darkCard shadow-sm sticky top-0 z-40 border-b border-gray-100 dark:border-darkBorder">
+        <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3 text-primary dark:text-blue-400">
+                <div class="bg-blue-50 dark:bg-blue-900/30 p-2 rounded-lg">
+                    <i class="fas fa-cloud text-xl"></i>
+                </div>
+                <h1 class="text-xl font-bold tracking-tight">Tonton Tech <span class="text-xs font-normal text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full ml-1">Cloud</span></h1>
+            </div>
+            <button onclick="window.toggleTheme()" class="p-2.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition active:scale-95">
+                <i class="fas fa-moon dark:hidden text-gray-600 text-lg"></i>
+                <i class="fas fa-sun hidden dark:block text-yellow-400 text-lg"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Desktop Navigation -->
+    <nav class="hidden md:block bg-white dark:bg-darkCard border-b border-gray-200 dark:border-darkBorder">
+        <div class="max-w-7xl mx-auto px-4 flex">
+            <button onclick="window.switchTab('tab-venda')" class="desktop-tab-btn px-5 py-4 font-medium text-sm border-b-2 border-primary text-primary" data-target="tab-venda"><i class="fas fa-shopping-cart mr-2"></i>PDV</button>
+            <button onclick="window.switchTab('tab-clientes')" class="desktop-tab-btn px-5 py-4 font-medium text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" data-target="tab-clientes"><i class="fas fa-users mr-2"></i>Clientes</button>
+            <button onclick="window.switchTab('tab-cadastro')" class="desktop-tab-btn px-5 py-4 font-medium text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" data-target="tab-cadastro"><i class="fas fa-box-open mr-2"></i>Produtos</button>
+            <button onclick="window.switchTab('tab-historico')" class="desktop-tab-btn px-5 py-4 font-medium text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" data-target="tab-historico"><i class="fas fa-chart-line mr-2"></i>Histórico</button>
+            <button onclick="window.switchTab('tab-config')" class="desktop-tab-btn px-5 py-4 font-medium text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" data-target="tab-config"><i class="fas fa-cogs mr-2"></i>Config</button>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow max-w-7xl mx-auto px-4 py-6 w-full pb-24 md:pb-8">
+        
+        <!-- TAB: PDV (VENDA) -->
+        <section id="tab-venda" class="tab-content block">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- Busca e Adição -->
+                <div class="lg:col-span-7 space-y-6">
+                    <div class="bg-white dark:bg-darkCard p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-darkBorder">
+                        <h2 class="text-lg font-bold mb-4">Adicionar ao Carrinho</h2>
+                        
+                        <div class="flex flex-col sm:flex-row gap-3 mb-5">
+                            <div class="flex-grow relative">
+                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i class="fas fa-barcode text-gray-400"></i></div>
+                                <input type="text" id="venda-barcode" placeholder="Código de barras..." class="w-full pl-12 pr-4 py-3.5 border border-gray-300 dark:border-darkBorder rounded-xl bg-gray-50 dark:bg-gray-900 focus:ring-2 focus:ring-primary outline-none transition">
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="window.startScannerForSale()" class="flex-1 sm:flex-none bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-5 py-3.5 rounded-xl font-medium flex items-center justify-center gap-2 transition"><i class="fas fa-camera text-lg"></i> <span class="sm:hidden">Ler</span></button>
+                                <button onclick="window.addByBarcode()" class="flex-1 sm:flex-none bg-gray-800 hover:bg-gray-900 dark:bg-gray-700 text-white px-6 py-3.5 rounded-xl font-medium transition">OK</button>
+                            </div>
+                        </div>
+                        
+                        <div class="relative bg-gray-50 dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-darkBorder">
+                            <label class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Busca Manual</label>
+                            <div class="flex flex-col sm:flex-row gap-3">
+                                <select id="venda-produto-select" class="flex-grow p-3 border border-gray-300 dark:border-darkBorder rounded-lg bg-white dark:bg-darkCard focus:ring-2 focus:ring-primary outline-none appearance-none"></select>
+                                <button onclick="window.addBySelect()" class="bg-primary hover:bg-blue-600 text-white py-3 px-5 rounded-lg font-medium transition whitespace-nowrap"><i class="fas fa-plus mr-1"></i> Incluir</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Carrinho e Checkout -->
+                <div class="lg:col-span-5 bg-white dark:bg-darkCard p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-darkBorder flex flex-col h-full min-h-[400px]">
+                    <div class="grid grid-cols-2 gap-4 mb-6">
+                        <div class="col-span-2 sm:col-span-1">
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Cliente (Opcional)</label>
+                            <select id="venda-cliente-select" class="w-full p-3 border border-gray-300 dark:border-darkBorder rounded-lg bg-gray-50 dark:bg-gray-900 outline-none text-sm"></select>
+                        </div>
+                        <div class="col-span-2 sm:col-span-1">
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Parcelas</label>
+                            <div class="relative">
+                                <i class="fas fa-credit-card absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                                <input type="number" id="venda-parcelas" value="1" min="1" max="24" class="w-full pl-9 pr-3 py-3 border border-gray-300 dark:border-darkBorder rounded-lg bg-gray-50 dark:bg-gray-900 outline-none text-sm font-bold text-primary">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <h2 class="text-sm font-bold text-gray-500 uppercase mb-3">Itens do Carrinho</h2>
+                    <div id="cart-items" class="flex-grow overflow-y-auto space-y-2 mb-6 pr-1 max-h-[35vh] lg:max-h-64 no-scrollbar"></div>
+
+                    <div class="mt-auto">
+                        <div class="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 mb-4 border border-gray-200 dark:border-darkBorder flex justify-between items-center text-xl font-black text-gray-800 dark:text-white">
+                            <span>Total</span>
+                            <span id="cart-total" class="text-secondary">R$ 0,00</span>
+                        </div>
+                        <button onclick="window.prepararPagamento()" class="w-full bg-primary hover:bg-blue-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 transition active:scale-95">
+                            <i class="fas fa-qrcode"></i> Cobrar com PIX
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB: CLIENTES -->
+        <section id="tab-clientes" class="tab-content hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="bg-white dark:bg-darkCard p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-darkBorder h-fit">
+                    <h2 class="text-lg font-bold mb-4">Novo Cliente</h2>
+                    <form id="form-cliente" onsubmit="window.salvarCliente(event)" class="space-y-4">
+                        <input type="text" id="cliente-nome" placeholder="Nome Completo *" required class="w-full p-3.5 border rounded-xl bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-darkBorder outline-none">
+                        <input type="tel" id="cliente-whatsapp" placeholder="WhatsApp (DDD+Num) *" required class="w-full p-3.5 border rounded-xl bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-darkBorder outline-none">
+                        <button type="submit" id="btn-salvar-cliente" class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition"><i class="fas fa-user-plus"></i> Salvar Cliente</button>
+                    </form>
+                </div>
+                
+                <div class="lg:col-span-2 space-y-4">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-lg font-bold">Cadastrados</h2>
+                        <span id="total-clientes" class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">0</span>
+                    </div>
+                    <div class="bg-white dark:bg-darkCard rounded-2xl shadow-sm border border-gray-100 dark:border-darkBorder overflow-hidden">
+                        <div class="hidden md:grid grid-cols-3 gap-4 p-4 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-darkBorder font-bold text-xs uppercase text-gray-500">
+                            <div>Nome</div><div>WhatsApp</div><div class="text-center">Ações</div>
+                        </div>
+                        <div id="lista-clientes-body" class="divide-y divide-gray-100 dark:divide-darkBorder"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB: PRODUTOS -->
+        <section id="tab-cadastro" class="tab-content hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div class="lg:col-span-5 bg-white dark:bg-darkCard p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-darkBorder h-fit">
+                    <h2 class="text-lg font-bold mb-5 flex items-center gap-2"><i class="fas fa-box text-primary"></i> Novo Produto</h2>
+                    <form id="form-cadastro" onsubmit="window.salvarProduto(event)" class="space-y-5">
+                        
+                        <div class="flex items-center gap-4">
+                            <div id="foto-preview" class="w-24 h-24 shrink-0 rounded-2xl bg-gray-100 dark:bg-gray-800 border-2 border-dashed border-gray-300 dark:border-gray-600 flex flex-col items-center justify-center relative cursor-pointer overflow-hidden" onclick="document.getElementById('produto-foto').click()">
+                                <i class="fas fa-camera text-2xl text-gray-400 mb-1"></i>
+                                <span class="text-[10px] text-gray-500 font-bold uppercase">Foto</span>
+                                <img id="img-preview" src="" alt="Preview" class="hidden absolute inset-0 w-full h-full object-cover">
+                            </div>
+                            <input type="file" id="produto-foto" accept="image/*" class="hidden" onchange="window.previewImage(event)">
+                            <div class="flex-grow">
+                                <input type="text" id="produto-nome" required placeholder="Nome do Produto *" class="w-full p-3 border rounded-xl bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-darkBorder outline-none">
+                            </div>
+                        </div>
+
+                        <div class="relative">
+                            <input type="text" id="produto-barcode" placeholder="Cód. Barras (Deixe vazio p/ gerar)" class="w-full pl-3 pr-14 py-3 border rounded-xl bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-darkBorder outline-none">
+                            <button type="button" onclick="window.startScannerForRegister()" class="absolute right-2 top-2 bottom-2 bg-gray-200 dark:bg-gray-700 px-3 rounded-lg text-gray-600 dark:text-gray-300 transition"><i class="fas fa-qrcode"></i></button>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-xs font-bold text-gray-500 ml-1">Custo R$</label>
+                                <input type="number" id="produto-custo" step="0.01" required class="w-full p-3 border rounded-xl bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-darkBorder outline-none" oninput="window.calcularMargem()">
+                            </div>
+                            <div>
+                                <label class="text-xs font-bold text-gray-500 ml-1">Venda R$</label>
+                                <input type="number" id="produto-venda" step="0.01" required class="w-full p-3 border rounded-xl bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-darkBorder outline-none" oninput="window.calcularMargem()">
+                            </div>
+                        </div>
+
+                        <div class="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl flex justify-around border border-blue-100 dark:border-blue-800/30">
+                            <div class="text-center"><p class="text-[10px] uppercase font-bold text-blue-600">Lucro Bruto</p><p id="display-lucro" class="font-bold text-lg">R$ 0,00</p></div>
+                            <div class="text-center"><p class="text-[10px] uppercase font-bold text-blue-600">Margem</p><p id="display-margem" class="font-bold text-lg">0,00%</p></div>
+                        </div>
+
+                        <button type="submit" id="btn-salvar-produto" class="w-full py-4 rounded-xl bg-primary text-white font-bold flex justify-center items-center gap-2 active:scale-95 transition shadow-lg"><i class="fas fa-save"></i> Salvar na Nuvem</button>
+                    </form>
+                </div>
+
+                <div class="lg:col-span-7 space-y-4">
+                    <h2 class="text-lg font-bold">Estoque de Produtos</h2>
+                    <div class="bg-white dark:bg-darkCard rounded-2xl shadow-sm border border-gray-100 dark:border-darkBorder overflow-hidden">
+                        <div class="hidden md:grid grid-cols-12 gap-4 p-4 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-darkBorder font-bold text-xs uppercase text-gray-500">
+                            <div class="col-span-2">Img</div><div class="col-span-4">Produto</div><div class="col-span-2 text-right">Custo</div><div class="col-span-2 text-right">Venda</div><div class="col-span-2 text-center">Ações</div>
+                        </div>
+                        <div id="lista-produtos-body" class="divide-y divide-gray-100 dark:divide-darkBorder"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB: HISTÓRICO -->
+        <section id="tab-historico" class="tab-content hidden">
+            <h2 class="text-lg font-bold mb-4">Histórico de Vendas</h2>
+            <div class="bg-white dark:bg-darkCard rounded-2xl shadow-sm border border-gray-100 dark:border-darkBorder overflow-hidden">
+                <div class="hidden md:grid grid-cols-12 gap-4 p-4 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-darkBorder font-bold text-xs uppercase text-gray-500">
+                    <div class="col-span-3">Data</div><div class="col-span-4">Cliente</div><div class="col-span-2 text-center">Parc.</div><div class="col-span-2 text-right">Total</div><div class="col-span-1 text-center">Ação</div>
+                </div>
+                <div id="lista-historico-body" class="divide-y divide-gray-100 dark:divide-darkBorder"></div>
+            </div>
+        </section>
+
+        <!-- TAB: CONFIGURAÇÕES -->
+        <section id="tab-config" class="tab-content hidden">
+            <div class="bg-white dark:bg-darkCard p-6 sm:p-8 rounded-2xl shadow-sm max-w-xl mx-auto border border-gray-100 dark:border-darkBorder">
+                <div class="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mb-4"><i class="fas fa-cloud text-2xl text-primary"></i></div>
+                <h2 class="text-2xl font-bold mb-2">Ajustes do PIX (Nuvem)</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Preencha os dados da sua conta para habilitar o pagamento PIX.</p>
+                
+                <form id="form-config" onsubmit="window.salvarConfig(event)" class="space-y-5">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Chave PIX *</label>
+                        <input type="text" id="config-chave" required placeholder="CPF, CNPJ, Celular ou Email" class="w-full p-3.5 border rounded-xl bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-darkBorder outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Nome do Titular *</label>
+                        <input type="text" id="config-nome" required maxlength="25" class="w-full p-3.5 border rounded-xl bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-darkBorder outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Cidade *</label>
+                        <input type="text" id="config-cidade" required maxlength="15" class="w-full p-3.5 border rounded-xl bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-darkBorder outline-none">
+                    </div>
+                    <button type="submit" id="btn-salvar-config" class="w-full py-4 bg-gray-800 dark:bg-gray-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95 transition mt-4"><i class="fas fa-save"></i> Salvar na Nuvem</button>
+                </form>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Mobile Bottom Navigation -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-darkCard border-t border-gray-200 dark:border-darkBorder z-40 pb-safe">
+        <div class="flex justify-between px-2 py-1">
+            <button onclick="window.switchTab('tab-venda')" class="mobile-tab-btn flex-1 flex flex-col items-center justify-center py-2 text-primary transition-colors" data-target="tab-venda"><i class="fas fa-shopping-cart text-xl mb-1"></i><span class="text-[10px] font-medium">PDV</span></button>
+            <button onclick="window.switchTab('tab-clientes')" class="mobile-tab-btn flex-1 flex flex-col items-center justify-center py-2 text-gray-400" data-target="tab-clientes"><i class="fas fa-users text-xl mb-1"></i><span class="text-[10px] font-medium">Clientes</span></button>
+            <button onclick="window.switchTab('tab-cadastro')" class="mobile-tab-btn flex-1 flex flex-col items-center justify-center py-2 text-gray-400" data-target="tab-cadastro"><i class="fas fa-box-open text-xl mb-1"></i><span class="text-[10px] font-medium">Produtos</span></button>
+            <button onclick="window.switchTab('tab-historico')" class="mobile-tab-btn flex-1 flex flex-col items-center justify-center py-2 text-gray-400" data-target="tab-historico"><i class="fas fa-chart-line text-xl mb-1"></i><span class="text-[10px] font-medium">Histórico</span></button>
+            <button onclick="window.switchTab('tab-config')" class="mobile-tab-btn flex-1 flex flex-col items-center justify-center py-2 text-gray-400" data-target="tab-config"><i class="fas fa-cog text-xl mb-1"></i><span class="text-[10px] font-medium">Config</span></button>
+        </div>
+    </nav>
+
+    <!-- FIREBASE MODULE -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, collection, onSnapshot, addDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // ==========================================
+        // CONFIGURAÇÃO DO FIREBASE (SEU PROJETO)
+        // ==========================================
+        let firebaseConfig = {
+            apiKey: "AIzaSyAwbJ276TGbA4L6g7ymp8RcOG2hsu4BAOY",
+            authDomain: "tonton-tech.firebaseapp.com",
+            projectId: "tonton-tech",
+            storageBucket: "tonton-tech.firebasestorage.app",
+            messagingSenderId: "2377563899",
+            appId: "1:2377563899:web:9cff830bb2200323333a5e",
+            measurementId: "G-G1J8740YW1"
+        };
+        
+        // Verifica se está rodando no ambiente imersivo de demonstração e utiliza as chaves de teste
+        const appEnvId = typeof __app_id !== 'undefined' ? __app_id : 'tonton-app';
+        if (typeof __firebase_config !== 'undefined') {
+            firebaseConfig = JSON.parse(__firebase_config);
+        }
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        
+        let userId = null;
+        let dbBasePath = ''; // Path seguro baseado no usuário
+
+        // === ESTADOS GLOBAIS ===
+        let configPix = { chave: '', nome: '', cidade: '' };
+        let produtos = [];
+        let clientes = [];
+        let vendas = [];
+        let carrinho = [];
+        let vendaTemporaria = null;
+        let qrCodeInstance = null;
+        let currentImg = null; // Imagem comprimida em Base64
+
+        // === INICIALIZAÇÃO E AUTENTICAÇÃO ===
+        async function initApp() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined') {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                
+                userId = auth.currentUser.uid;
+                // Regra de segurança obrigatória para estruturação de dados
+                dbBasePath = `artifacts/${appEnvId}/users/${userId}`;
+                
+                document.getElementById('app-loader').style.opacity = '0';
+                setTimeout(() => document.getElementById('app-loader').style.display = 'none', 300);
+                
+                initDataListeners();
+                
+            } catch (error) {
+                console.error("Erro na autenticação:", error);
+                window.showToast("Erro ao conectar à nuvem", "error");
+            }
+        }
+
+        // === REALTIME LISTENERS (FIRESTORE) ===
+        function initDataListeners() {
+            if(!userId) return;
+
+            // Escutar Configurações do PIX
+            onSnapshot(doc(db, `${dbBasePath}/settings/configPix`), (docSnap) => {
+                if(docSnap.exists()) {
+                    configPix = docSnap.data();
+                    document.getElementById('config-chave').value = configPix.chave || '';
+                    document.getElementById('config-nome').value = configPix.nome || '';
+                    document.getElementById('config-cidade').value = configPix.cidade || '';
+                }
+            }, (err) => console.error("Erro config:", err));
+
+            // Escutar Produtos
+            onSnapshot(collection(db, `${dbBasePath}/produtos`), (snap) => {
+                produtos = [];
+                snap.forEach(d => produtos.push({id: d.id, ...d.data()}));
+                produtos.sort((a,b) => b.createdAt - a.createdAt); // Ordenação local para evitar erros de índice composto
+                window.renderListaProdutos();
+                window.atualizarSelectProdutos();
+            }, (err) => console.error("Erro produtos:", err));
+
+            // Escutar Clientes
+            onSnapshot(collection(db, `${dbBasePath}/clientes`), (snap) => {
+                clientes = [];
+                snap.forEach(d => clientes.push({id: d.id, ...d.data()}));
+                clientes.sort((a,b) => b.createdAt - a.createdAt);
+                window.renderListaClientes();
+                window.atualizarSelectClientes();
+            }, (err) => console.error("Erro clientes:", err));
+
+            // Escutar Vendas (Histórico)
+            onSnapshot(collection(db, `${dbBasePath}/vendas`), (snap) => {
+                vendas = [];
+                snap.forEach(d => vendas.push({id: d.id, ...d.data()}));
+                vendas.sort((a,b) => b.createdAt - a.createdAt);
+                window.renderHistorico();
+            }, (err) => console.error("Erro vendas:", err));
+        }
+
+        // === UI & UTILITÁRIOS ===
+        window.showToast = (msg, type = 'success') => {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 text-white transition-all duration-300 transform translate-y-[-20px] opacity-0 ${type === 'success' ? 'bg-secondary' : 'bg-red-500'}`;
+            toast.innerHTML = `<span class="text-sm font-bold">${msg}</span>`;
+            container.appendChild(toast);
+            requestAnimationFrame(() => toast.classList.remove('translate-y-[-20px]', 'opacity-0'));
+            setTimeout(() => { toast.classList.add('opacity-0', 'scale-95'); setTimeout(() => toast.remove(), 300); }, 2500);
+        };
+
+        window.formatarMoeda = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        window.toggleTheme = () => document.documentElement.classList.toggle('dark');
+
+        window.switchTab = (tabId) => {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.desktop-tab-btn').forEach(btn => {
+                btn.classList.remove('border-primary', 'text-primary'); btn.classList.add('border-transparent', 'text-gray-500');
+            });
+            document.querySelectorAll('.mobile-tab-btn').forEach(btn => {
+                btn.classList.remove('text-primary'); btn.classList.add('text-gray-400');
+            });
+
+            document.getElementById(tabId).classList.remove('hidden');
+            const dBtn = document.querySelector(`.desktop-tab-btn[data-target="${tabId}"]`);
+            if(dBtn) dBtn.classList.add('border-primary', 'text-primary');
+            const mBtn = document.querySelector(`.mobile-tab-btn[data-target="${tabId}"]`);
+            if(mBtn) mBtn.classList.add('text-primary');
+        };
+
+        // === CONFIGURAÇÕES PIX ===
+        window.salvarConfig = async (e) => {
+            e.preventDefault();
+            if(!userId) return;
+            const btn = document.getElementById('btn-salvar-config');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
+            
+            const dados = {
+                chave: document.getElementById('config-chave').value.trim(),
+                nome: document.getElementById('config-nome').value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0,25),
+                cidade: document.getElementById('config-cidade').value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0,15)
+            };
+
+            try {
+                await setDoc(doc(db, `${dbBasePath}/settings/configPix`), dados);
+                window.showToast("Configurações salvas na nuvem!");
+            } catch(err) { window.showToast("Erro ao salvar", "error"); }
+            btn.innerHTML = '<i class="fas fa-save"></i> Salvar na Nuvem';
+        };
+
+        function crc16(str) {
+            let crc = 0xFFFF;
+            for (let c = 0; c < str.length; c++) {
+                crc ^= str.charCodeAt(c) << 8;
+                for (let i = 0; i < 8; i++) {
+                    if (crc & 0x8000) crc = (crc << 1) ^ 0x1021;
+                    else crc = crc << 1;
+                }
+            }
+            return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+        }
+
+        function gerarPixCopiaCola(valor) {
+            if (!configPix.chave || !configPix.nome || !configPix.cidade) return null;
+            const pixKey = configPix.chave; const ammount = valor.toFixed(2);
+            const gui = "br.gov.bcb.pix";
+            const pixAccInfo = `0014${gui}01${String(pixKey.length).padStart(2,'0')}${pixKey}`;
+            const pInfo = `00020126${String(pixAccInfo.length).padStart(2,'0')}${pixAccInfo}52040000530398654${String(ammount.length).padStart(2,'0')}${ammount}5802BR59${String(configPix.nome.length).padStart(2,'0')}${configPix.nome}60${String(configPix.cidade.length).padStart(2,'0')}${configPix.cidade}62070503***6304`;
+            return pInfo + crc16(pInfo);
+        }
+
+        // === PRODUTOS E IMAGEM ===
+        window.calcularMargem = () => {
+            const custo = parseFloat(document.getElementById('produto-custo').value) || 0;
+            const venda = parseFloat(document.getElementById('produto-venda').value) || 0;
+            if(venda>0 && custo>=0){
+                let luc = venda - custo;
+                document.getElementById('display-lucro').innerText = window.formatarMoeda(luc);
+                document.getElementById('display-margem').innerText = ((luc/venda)*100).toFixed(1)+'%';
+            }
+        };
+
+        // Redimensiona imagem para evitar documentos grandes no banco
+        window.previewImage = (e) => {
+            const file = e.target.files[0];
+            if(file) {
+                const reader = new FileReader();
+                reader.onload = ev => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX = 200; // Limite de tamanho pequeno para otimização
+                        let w = img.width; let h = img.height;
+                        if(w > h && w > MAX) { h *= MAX / w; w = MAX; }
+                        else if(h > MAX) { w *= MAX / h; h = MAX; }
+                        canvas.width = w; canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, w, h);
+                        currentImg = canvas.toDataURL('image/jpeg', 0.7);
+                        
+                        const imgEl = document.getElementById('img-preview');
+                        imgEl.src = currentImg; imgEl.classList.remove('hidden'); 
+                    };
+                    img.src = ev.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+
+        window.salvarProduto = async (e) => {
+            e.preventDefault();
+            if(!userId) return;
+            const btn = document.getElementById('btn-salvar-produto');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
+            
+            const custo = parseFloat(document.getElementById('produto-custo').value);
+            const venda = parseFloat(document.getElementById('produto-venda').value);
+            
+            // Gera código automático se o campo estiver vazio
+            let barcode = document.getElementById('produto-barcode').value.trim();
+            if (!barcode) {
+                barcode = 'TT' + Date.now().toString().slice(-8);
+            }
+            
+            const novoProduto = {
+                nome: document.getElementById('produto-nome').value,
+                barcode: barcode,
+                custo, venda, lucro: venda-custo, foto: currentImg,
+                createdAt: Date.now()
+            };
+
+            try {
+                await addDoc(collection(db, `${dbBasePath}/produtos`), novoProduto);
+                window.showToast("Produto salvo na nuvem!");
+                e.target.reset(); currentImg=null; document.getElementById('img-preview').classList.add('hidden');
+                document.getElementById('display-lucro').innerText = "R$ 0,00"; document.getElementById('display-margem').innerText = "0,00%";
+            } catch(err) { window.showToast("Erro ao salvar produto", "error"); }
+            btn.innerHTML = '<i class="fas fa-save"></i> Salvar na Nuvem';
+        };
+
+        window.deletarProduto = async (id) => {
+            if(!userId) return;
+            try {
+                await deleteDoc(doc(db, `${dbBasePath}/produtos`, id));
+                window.showToast("Produto excluído!");
+            } catch(err) { window.showToast("Erro ao excluir", "error"); }
+        };
+
+        window.renderListaProdutos = () => {
+            const container = document.getElementById('lista-produtos-body'); container.innerHTML = '';
+            if(produtos.length === 0) { container.innerHTML = '<div class="p-4 text-center text-gray-500">Estoque vazio.</div>'; return; }
+            produtos.forEach(p => {
+                const imgHTML = p.foto ? `<img src="${p.foto}" class="w-12 h-12 rounded-lg object-cover">` : `<div class="w-12 h-12 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center"><i class="fas fa-box text-gray-400"></i></div>`;
+                container.innerHTML += `
+                    <div class="p-4 flex flex-col md:grid md:grid-cols-12 gap-3 items-center">
+                        <div class="w-full flex justify-between md:col-span-6 md:contents">
+                            <div class="flex items-center gap-3 w-full md:col-span-6">
+                                ${imgHTML}
+                                <div><p class="font-bold text-gray-800 dark:text-gray-200">${p.nome}</p><p class="text-[10px] text-gray-500 font-mono">${p.barcode}</p></div>
+                            </div>
+                            <button onclick="window.deletarProduto('${p.id}')" class="md:hidden text-red-500 p-2"><i class="fas fa-trash"></i></button>
+                        </div>
+                        <div class="w-full grid grid-cols-2 md:contents text-sm">
+                            <div class="md:col-span-2 md:text-right"><span class="md:hidden text-xs text-gray-500 block">Custo</span><span class="text-gray-600 dark:text-gray-400">${window.formatarMoeda(p.custo)}</span></div>
+                            <div class="md:col-span-2 md:text-right"><span class="md:hidden text-xs text-gray-500 block">Venda</span><span class="font-bold text-secondary">${window.formatarMoeda(p.venda)}</span></div>
+                        </div>
+                        <div class="hidden md:flex col-span-2 justify-center"><button onclick="window.deletarProduto('${p.id}')" class="text-red-500 hover:text-red-700 p-2"><i class="fas fa-trash"></i></button></div>
+                    </div>`;
+            });
+        };
+        window.atualizarSelectProdutos = () => {
+            const sel = document.getElementById('venda-produto-select');
+            sel.innerHTML = '<option value="">Selecione na lista...</option>';
+            produtos.forEach(p => sel.innerHTML += `<option value="${p.barcode}">${p.nome} - ${window.formatarMoeda(p.venda)}</option>`);
+        };
+
+        // === CLIENTES ===
+        window.salvarCliente = async (e) => {
+            e.preventDefault();
+            if(!userId) return;
+            const btn = document.getElementById('btn-salvar-cliente');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            try {
+                await addDoc(collection(db, `${dbBasePath}/clientes`), {
+                    nome: document.getElementById('cliente-nome').value,
+                    whatsapp: document.getElementById('cliente-whatsapp').value,
+                    createdAt: Date.now()
+                });
+                window.showToast("Cliente Salvo!"); e.target.reset();
+            } catch(err) { window.showToast("Erro ao salvar cliente", "error"); }
+            btn.innerHTML = '<i class="fas fa-user-plus"></i> Salvar Cliente';
+        };
+
+        window.deletarCliente = async (id) => {
+            if(!userId) return;
+            try { await deleteDoc(doc(db, `${dbBasePath}/clientes`, id)); window.showToast("Cliente removido!"); } 
+            catch(err) { window.showToast("Erro", "error"); }
+        };
+
+        window.renderListaClientes = () => {
+            const container = document.getElementById('lista-clientes-body'); container.innerHTML = '';
+            document.getElementById('total-clientes').innerText = clientes.length;
+            if(clientes.length===0) { container.innerHTML = '<div class="p-4 text-center text-gray-500">Nenhum cliente.</div>'; return; }
+            clientes.forEach(c => {
+                container.innerHTML += `
+                    <div class="p-4 flex flex-col md:grid md:grid-cols-3 gap-2 md:items-center">
+                        <div class="flex justify-between items-center md:block"><p class="font-bold text-gray-800 dark:text-gray-200">${c.nome}</p><button onclick="window.deletarCliente('${c.id}')" class="md:hidden text-red-500 p-2"><i class="fas fa-trash"></i></button></div>
+                        <div class="text-sm text-gray-500 flex items-center gap-2"><i class="fab fa-whatsapp text-green-500"></i> ${c.whatsapp}</div>
+                        <div class="hidden md:block text-center"><button onclick="window.deletarCliente('${c.id}')" class="text-red-500 p-2"><i class="fas fa-trash"></i></button></div>
+                    </div>`;
+            });
+        };
+        window.atualizarSelectClientes = () => {
+            const sel = document.getElementById('venda-cliente-select');
+            sel.innerHTML = '<option value="">Consumidor Final (Avulso)</option>';
+            clientes.forEach(c => sel.innerHTML += `<option value="${c.id}">${c.nome}</option>`);
+        };
+
+        // === HISTÓRICO ===
+        window.deletarVenda = async (id) => {
+            if(!userId) return;
+            try { await deleteDoc(doc(db, `${dbBasePath}/vendas`, id)); window.showToast("Venda estornada."); }
+            catch(err) { window.showToast("Erro", "error"); }
+        };
+        window.renderHistorico = () => {
+            const container = document.getElementById('lista-historico-body'); container.innerHTML = '';
+            if(vendas.length === 0) { container.innerHTML = '<div class="p-4 text-center text-gray-500">Nenhuma venda registrada.</div>'; return;}
+            vendas.forEach(v => {
+                const dtObj = new Date(v.createdAt);
+                const dtFmt = dtObj.toLocaleDateString('pt-BR') + ' ' + dtObj.getHours().toString().padStart(2,'0') + ':' + dtObj.getMinutes().toString().padStart(2,'0');
+                container.innerHTML += `
+                    <div class="p-4 flex flex-col md:grid md:grid-cols-12 gap-2 md:items-center">
+                        <div class="flex justify-between md:contents"><p class="md:col-span-3 text-xs text-gray-500">${dtFmt}</p><button onclick="window.deletarVenda('${v.id}')" class="md:hidden text-red-500"><i class="fas fa-trash"></i></button></div>
+                        <p class="md:col-span-4 font-bold text-gray-800 dark:text-gray-200 text-sm">${v.clienteNome}</p>
+                        <div class="flex justify-between items-center md:contents mt-2 md:mt-0">
+                            <div class="md:col-span-2 md:text-center text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-md text-gray-600 dark:text-gray-300 w-fit">${v.parcelas}x</div>
+                            <p class="md:col-span-2 md:text-right font-black text-secondary">${window.formatarMoeda(v.total)}</p>
+                        </div>
+                        <div class="hidden md:flex md:col-span-1 justify-center"><button onclick="window.deletarVenda('${v.id}')" class="text-red-500 p-2"><i class="fas fa-trash"></i></button></div>
+                    </div>`;
+            });
+        };
+
+        // === PDV & CARRINHO ===
+        const renderCarrinho = () => {
+            const container = document.getElementById('cart-items');
+            if (carrinho.length === 0) {
+                container.innerHTML = '<div class="flex flex-col items-center justify-center h-24 text-gray-400"><i class="fas fa-box-open text-2xl mb-2"></i><p class="text-sm">Carrinho vazio</p></div>';
+                document.getElementById('cart-total').textContent = "R$ 0,00"; return;
+            }
+            container.innerHTML = ''; let total = 0;
+            carrinho.forEach((item, idx) => {
+                const sub = item.produto.venda * item.quantidade; total += sub;
+                container.innerHTML += `
+                    <div class="flex justify-between items-center bg-gray-50 dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-darkBorder">
+                        <div class="flex-grow"><p class="font-bold text-sm leading-tight mb-1">${item.produto.nome}</p><p class="text-xs text-gray-500">${window.formatarMoeda(item.produto.venda)} cada</p></div>
+                        <div class="flex items-center gap-3">
+                            <div class="text-right"><p class="font-black text-sm">x${item.quantidade}</p><p class="text-xs font-bold text-primary">${window.formatarMoeda(sub)}</p></div>
+                            <button onclick="window.removerDoCarrinho(${idx})" class="w-8 h-8 rounded-full bg-red-100 text-red-500 flex items-center justify-center"><i class="fas fa-trash text-xs"></i></button>
+                        </div>
+                    </div>`;
+            });
+            document.getElementById('cart-total').textContent = window.formatarMoeda(total);
+        };
+
+        window.removerDoCarrinho = (idx) => { carrinho.splice(idx, 1); renderCarrinho(); };
+        
+        function adicionarAoCarrinho(prod) {
+            let item = carrinho.find(i => i.produto.id === prod.id);
+            if(item) item.quantidade++; else carrinho.push({produto: prod, quantidade: 1});
+            renderCarrinho(); document.getElementById('venda-barcode').value = '';
+            window.showToast("Adicionado!");
+        }
+
+        window.addByBarcode = () => {
+            const bc = document.getElementById('venda-barcode').value.trim();
+            if(!bc) return;
+            const p = produtos.find(p => p.barcode === bc);
+            if(p) adicionarAoCarrinho(p); else window.showToast("Produto não cadastrado", "error");
+        };
+
+        window.addBySelect = () => {
+            const bc = document.getElementById('venda-produto-select').value;
+            const p = produtos.find(p => p.barcode === bc);
+            if(p) adicionarAoCarrinho(p);
+        };
+
+        window.prepararPagamento = () => {
+            if(carrinho.length === 0) return window.showToast("Carrinho vazio", "error");
+            if(!configPix.chave) { window.switchTab('tab-config'); return window.showToast("Configure a Chave PIX primeiro", "error"); }
+
+            const clienteId = document.getElementById('venda-cliente-select').value;
+            const cliente = clientes.find(c => c.id === clienteId) || { nome: "Consumidor Final", whatsapp: "" };
+            const parcelas = parseInt(document.getElementById('venda-parcelas').value) || 1;
+            
+            let total = 0, lucro = 0;
+            let itens = carrinho.map(i => {
+                total += i.produto.venda * i.quantidade; lucro += i.produto.lucro * i.quantidade;
+                return {nome: i.produto.nome, qtd: i.quantidade};
+            });
+
+            const pixStr = gerarPixCopiaCola(total);
+            vendaTemporaria = { cliente, parcelas, total, lucro, itens, pixPayload: pixStr };
+
+            document.getElementById('pix-resumo-texto').innerText = `Valor: ${window.formatarMoeda(total)} • ${parcelas}x`;
+            document.getElementById('pix-copia-cola').value = pixStr || "Erro ao gerar PIX.";
+            
+            document.getElementById('qrcode-container').innerHTML = '';
+            if(pixStr) {
+                qrCodeInstance = new QRCode(document.getElementById('qrcode-container'), {
+                    text: pixStr, width: 220, height: 220, colorDark : "#000", colorLight : "#fff"
+                });
+            }
+            document.getElementById('pix-modal').classList.remove('hidden');
+        };
+
+        window.confirmarVendaPix = async () => {
+            if(!vendaTemporaria || !userId) return;
+            const btn = document.getElementById('btn-finalizar-venda');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registrando...';
+            
+            try {
+                await addDoc(collection(db, `${dbBasePath}/vendas`), {
+                    clienteNome: vendaTemporaria.cliente.nome, parcelas: vendaTemporaria.parcelas,
+                    itens: vendaTemporaria.itens, total: vendaTemporaria.total, lucro: vendaTemporaria.lucro,
+                    createdAt: Date.now()
+                });
+                carrinho = []; renderCarrinho(); window.fecharModalPix();
+                window.showToast("Venda salva na nuvem com sucesso!");
+            } catch(err) { window.showToast("Erro ao registrar venda", "error"); }
+            btn.innerHTML = '<i class="fas fa-check-circle text-xl"></i> Finalizar Venda';
+        };
+
+        window.fecharModalPix = () => { document.getElementById('pix-modal').classList.add('hidden'); vendaTemporaria = null; };
+        window.copiarPix = () => { const txt = document.getElementById('pix-copia-cola'); txt.select(); document.execCommand('copy'); window.showToast("Chave copiada!"); };
+        window.enviarWhatsApp = () => {
+            if(!vendaTemporaria) return;
+            let wpp = vendaTemporaria.cliente.whatsapp;
+            if(!wpp) return window.showToast("Cliente sem WhatsApp.", "error");
+            wpp = wpp.replace(/\D/g,'');
+            let itensTxt = vendaTemporaria.itens.map(i => `${i.qtd}x ${i.nome}`).join(', ');
+            let parcelasText = vendaTemporaria.parcelas > 1 ? `${vendaTemporaria.parcelas} vezes` : `À vista`;
+            let msg = `Olá, ${vendaTemporaria.cliente.nome}! 🛒\n\nSua compra na *Tonton Tech*:\n📦 Itens: ${itensTxt}\n💳 Pagamento: ${parcelasText}\n💰 *Total: ${window.formatarMoeda(vendaTemporaria.total)}*\n\n`;
+            if(vendaTemporaria.pixPayload) msg += `Use o PIX Copia e Cola abaixo para pagar:\n\n${vendaTemporaria.pixPayload}\n\n`;
+            msg += `Obrigado pela preferência!`;
+            window.open(`https://wa.me/55${wpp}?text=${encodeURIComponent(msg)}`, '_blank');
+        };
+
+        // === SCANNER ===
+        let html5QrCode = null;
+        window.startScanner = (cb) => {
+            document.getElementById('scanner-modal').classList.remove('hidden');
+            if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+            html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 150 }, aspectRatio: 1.0 },
+                (txt) => { if(navigator.vibrate) navigator.vibrate(100); cb(txt); window.stopScanner(); }, (err) => {}
+            ).catch(err => { window.showToast("Erro ao acessar câmera", "error"); window.stopScanner(); });
+        };
+        window.stopScanner = () => {
+            document.getElementById('scanner-modal').classList.add('hidden');
+            if (html5QrCode && html5QrCode.isScanning) html5QrCode.stop().catch(e=>console.log(e));
+        };
+        window.startScannerForRegister = () => window.startScanner(c => document.getElementById('produto-barcode').value = c);
+        window.startScannerForSale = () => window.startScanner(c => { document.getElementById('venda-barcode').value = c; window.addByBarcode(); });
+
+        // Inicializa o Aplicativo e Firebase
+        renderCarrinho();
+        initApp();
+        
+    </script>
+</body>
+</html>
